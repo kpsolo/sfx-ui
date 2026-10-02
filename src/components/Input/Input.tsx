@@ -43,7 +43,7 @@ export const Input: React.FC<InputProps> = ({
     lg: 'px-4 py-3 text-base',
   }[inputSize];
 
-  const hasShader = Boolean(shader && !disableShader && !disabled);
+  const hasShader = Boolean(shader && !disableShader && !disabled && (isFocused || isHovered));
 
   return (
     <div className={`flex flex-col gap-1.5 w-full ${className}`}>

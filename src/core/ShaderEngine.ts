@@ -36,6 +36,10 @@ export class ShaderEngine {
   public getOrCreateProgram(fragmentSource: string): CompilationResult {
     const gl = this.gl;
 
+    if (gl.isContextLost()) {
+      return { program: null, error: null };
+    }
+
     if (this.programCache.has(fragmentSource)) {
       return { program: this.programCache.get(fragmentSource)!, error: null };
     }
@@ -43,43 +47,55 @@ export class ShaderEngine {
     // Compile vertex shader once
     if (!this.vertexShader) {
       const vs = gl.createShader(gl.VERTEX_SHADER);
-      if (!vs) return { program: null, error: 'Failed to create vertex shader' };
+      if (!vs) return { program: null, error: null };
       gl.shaderSource(vs, VERTEX_SHADER_SOURCE);
       gl.compileShader(vs);
-      if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
-        const info = gl.getShaderInfoLog(vs);
+      const vsStatus = gl.getShaderParameter(vs, gl.COMPILE_STATUS);
+      if (vsStatus === false) {
+        const info = gl.getShaderInfoLog(vs) || 'Vertex compilation failed';
         gl.deleteShader(vs);
         return { program: null, error: `Vertex Shader Error: ${info}` };
+      }
+      if (!vsStatus) {
+        return { program: null, error: null };
       }
       this.vertexShader = vs;
     }
 
     // Compile fragment shader
     const fs = gl.createShader(gl.FRAGMENT_SHADER);
-    if (!fs) return { program: null, error: 'Failed to create fragment shader' };
+    if (!fs) return { program: null, error: null };
 
     gl.shaderSource(fs, fragmentSource);
     gl.compileShader(fs);
 
-    if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+    const fsStatus = gl.getShaderParameter(fs, gl.COMPILE_STATUS);
+    if (fsStatus === false) {
       const info = gl.getShaderInfoLog(fs) || 'Unknown compilation error';
       gl.deleteShader(fs);
       return { program: null, error: info };
     }
+    if (!fsStatus) {
+      return { program: null, error: null };
+    }
 
     // Link program
     const program = gl.createProgram();
-    if (!program) return { program: null, error: 'Failed to create WebGL program' };
+    if (!program) return { program: null, error: null };
 
     gl.attachShader(program, this.vertexShader);
     gl.attachShader(program, fs);
     gl.linkProgram(program);
 
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const linkStatus = gl.getProgramParameter(program, gl.LINK_STATUS);
+    if (linkStatus === false) {
       const info = gl.getProgramInfoLog(program) || 'Unknown linking error';
       gl.deleteProgram(program);
       gl.deleteShader(fs);
       return { program: null, error: info };
+    }
+    if (!linkStatus) {
+      return { program: null, error: null };
     }
 
     gl.deleteShader(fs); // Marked for deletion once detached/unused

@@ -11,7 +11,7 @@ export const Badge: React.FC<BadgeProps> = ({
   children,
   variant = 'primary',
   dot = false,
-  shader = 'plasma-flow',
+  shader,
   customFragmentShader,
   uniforms,
   disableShader,

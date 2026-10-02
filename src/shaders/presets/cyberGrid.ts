@@ -30,9 +30,9 @@ void main() {
   
   if (p.y > horizon) {
     vec2 gridUv = vec2(p.x * depth, depth + u_time * 1.5);
-    vec2 gridLines = abs(fract(gridUv - 0.5) - 0.5) / fwidth(gridUv);
-    float line = min(gridLines.x, gridLines.y);
-    float grid = 1.0 - min(line, 1.0);
+    vec2 f = abs(fract(gridUv - 0.5) - 0.5);
+    float line = min(f.x, f.y);
+    float grid = smoothstep(0.06, 0.0, line);
     
     // Fade into distance
     float fade = exp(-0.15 * depth);

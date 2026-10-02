@@ -32,7 +32,7 @@ export const Textarea: React.FC<TextareaProps> = ({
   const [isFocused, setIsFocused] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  const hasShader = Boolean(shader && !disableShader && !disabled);
+  const hasShader = Boolean(shader && !disableShader && !disabled && (isFocused || isHovered));
 
   return (
     <div className={`flex flex-col gap-1.5 w-full ${className}`}>
