@@ -4,6 +4,17 @@ export * from './core/utils';
 export * from './core/ShaderEngine';
 export * from './core/ShaderContext';
 export * from './core/ShaderCanvas';
+export * from './core/ErrorBoundary';
+
+// Cutting-Edge Unified GPU Architecture
+export * from './core/unified/types';
+export * from './core/unified/UnifiedShaderEngine';
+export * from './core/unified/UnifiedContext';
+export * from './core/unified/useUnifiedShader';
+
+// Pure Canvas UI Engine (100% Canvas Mode)
+export * from './canvas-ui/PureCanvasEngine';
+export * from './canvas-ui/PureCanvasView';
 
 // Shaders & Presets
 export * from './shaders/common';
