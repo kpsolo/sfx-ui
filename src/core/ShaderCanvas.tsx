@@ -58,8 +58,9 @@ export const ShaderCanvas: React.FC<ShaderCanvasProps> = ({
   const activeLerpRef = useRef<number>(0.0);
   const timeRef = useRef<number>(0.0);
 
-  const isVisibleRef = useRef<boolean>(true);
+  const [isVisible, setIsVisible] = useState<boolean>(false);
   const [glError, setGlError] = useState<string | null>(null);
+  const isContextLostRef = useRef<boolean>(false);
 
   // Sync external hover/active props
   useEffect(() => {
@@ -106,41 +107,73 @@ export const ShaderCanvas: React.FC<ShaderCanvasProps> = ({
     isActiveRef.current = false;
   }, []);
 
+  // Monitor visibility via IntersectionObserver
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !shadersEnabled) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsVisible(entry.isIntersecting);
+      },
+      { threshold: 0.01, rootMargin: '50px' }
+    );
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [shadersEnabled]);
+
+  // WebGL Render Loop - only active when visible
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
-    if (!canvas || !container || !shadersEnabled) return;
+    if (!canvas || !container || !shadersEnabled || !isVisible) return;
 
-    // IntersectionObserver to pause rendering when offscreen
-    const observer = new IntersectionObserver(([entry]) => {
-      isVisibleRef.current = entry.isIntersecting;
-    }, { threshold: 0.05 });
-    observer.observe(container);
+    let engine: ShaderEngine | null = null;
+    let gl: WebGLRenderingContext | WebGL2RenderingContext | null = null;
 
-    // Initialize WebGL context
-    const gl = canvas.getContext('webgl2', {
-      alpha: true,
-      antialias: true,
-      powerPreference: 'high-performance',
-      premultipliedAlpha: true,
-    }) || canvas.getContext('webgl', {
-      alpha: true,
-      antialias: true,
-      powerPreference: 'high-performance',
-      premultipliedAlpha: true,
-    });
+    try {
+      gl = canvas.getContext('webgl2', {
+        alpha: true,
+        antialias: true,
+        powerPreference: 'high-performance',
+        premultipliedAlpha: true,
+      }) || canvas.getContext('webgl', {
+        alpha: true,
+        antialias: true,
+        powerPreference: 'high-performance',
+        premultipliedAlpha: true,
+      });
+    } catch (e) {
+      console.warn('SFX-UI WebGL context creation failed:', e);
+    }
 
     if (!gl) {
-      const err = 'WebGL is not supported in this environment.';
+      const err = 'WebGL context unavailable or maximum active context limit reached.';
       setGlError(err);
       onError?.(err);
-      observer.disconnect();
       return;
     }
 
     incrementContextCount();
+    isContextLostRef.current = false;
 
-    const engine = new ShaderEngine(gl);
+    // Handle context loss gracefully
+    const handleContextLost = (e: Event) => {
+      e.preventDefault();
+      isContextLostRef.current = true;
+      console.info('SFX-UI: WebGL context lost on element. Pausing.');
+    };
+
+    const handleContextRestored = () => {
+      isContextLostRef.current = false;
+      console.info('SFX-UI: WebGL context restored.');
+    };
+
+    canvas.addEventListener('webglcontextlost', handleContextLost, false);
+    canvas.addEventListener('webglcontextrestored', handleContextRestored, false);
+
+    engine = new ShaderEngine(gl);
     const compileRes = engine.getOrCreateProgram(fragmentSource);
 
     if (compileRes.error) {
@@ -155,15 +188,17 @@ export const ShaderCanvas: React.FC<ShaderCanvasProps> = ({
     let lastTime = performance.now();
 
     const handleResize = () => {
-      if (!canvas || !container) return;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2); // Cap at 2 for performance
+      if (!canvas || !container || !gl || isContextLostRef.current) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const width = Math.floor(container.clientWidth * dpr);
       const height = Math.floor(container.clientHeight * dpr);
 
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width || 1;
-        canvas.height = height || 1;
-        gl.viewport(0, 0, canvas.width, canvas.height);
+      if (width > 0 && height > 0 && (canvas.width !== width || canvas.height !== height)) {
+        canvas.width = width;
+        canvas.height = height;
+        if (!gl.isContextLost()) {
+          gl.viewport(0, 0, canvas.width, canvas.height);
+        }
       }
     };
 
@@ -174,7 +209,7 @@ export const ShaderCanvas: React.FC<ShaderCanvasProps> = ({
     const renderLoop = (now: number) => {
       animationFrameId = requestAnimationFrame(renderLoop);
 
-      if (!isVisibleRef.current) return;
+      if (!gl || isContextLostRef.current || gl.isContextLost()) return;
 
       const delta = (now - lastTime) / 1000;
       lastTime = now;
@@ -190,7 +225,7 @@ export const ShaderCanvas: React.FC<ShaderCanvasProps> = ({
       hoverLerpRef.current = lerp(hoverLerpRef.current, targetHover, 0.15);
       activeLerpRef.current = lerp(activeLerpRef.current, targetActive, 0.25);
 
-      if (compileRes.program) {
+      if (compileRes.program && canvas.width > 0 && canvas.height > 0) {
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         engine.bindUniforms(compileRes.program, {
           u_time: timeRef.current,
@@ -218,12 +253,14 @@ export const ShaderCanvas: React.FC<ShaderCanvasProps> = ({
 
     return () => {
       cancelAnimationFrame(animationFrameId);
+      canvas.removeEventListener('webglcontextlost', handleContextLost);
+      canvas.removeEventListener('webglcontextrestored', handleContextRestored);
       resizeObserver.disconnect();
-      observer.disconnect();
       decrementContextCount();
-      engine.destroy();
+      if (engine) engine.destroy();
     };
   }, [
+    isVisible,
     fragmentSource,
     shadersEnabled,
     tokens.reducedMotion,

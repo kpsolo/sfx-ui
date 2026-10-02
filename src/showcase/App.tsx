@@ -129,11 +129,15 @@ export const AppContent: React.FC = () => {
   );
 };
 
+import { ErrorBoundary } from '../core/ErrorBoundary';
+
 export const App: React.FC = () => {
   return (
-    <ShaderProvider>
-      <AppContent />
-    </ShaderProvider>
+    <ErrorBoundary>
+      <ShaderProvider>
+        <AppContent />
+      </ShaderProvider>
+    </ErrorBoundary>
   );
 };
 

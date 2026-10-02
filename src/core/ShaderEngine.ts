@@ -75,8 +75,8 @@ export class ShaderEngine {
     gl.attachShader(program, fs);
     gl.linkProgram(program);
 
-    if (!gl.getShaderParameter(program, gl.LINK_STATUS)) {
-      const info = gl.getShaderInfoLog(program) || 'Unknown linking error';
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      const info = gl.getProgramInfoLog(program) || 'Unknown linking error';
       gl.deleteProgram(program);
       gl.deleteShader(fs);
       return { program: null, error: info };
