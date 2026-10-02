@@ -160,18 +160,32 @@ export class ShaderEngine {
       }
     }
 
-    // Arbitrary custom uniforms
+    // Custom and widget uniforms
+    const knownKeys = new Set([
+      'u_time',
+      'u_resolution',
+      'u_mouse',
+      'u_hover',
+      'u_active',
+      'u_corner_radius',
+      'u_pixel_ratio',
+      'u_color_primary',
+      'u_color_secondary',
+      'u_color_accent',
+      'u_color_bg',
+      'u_border_color'
+    ]);
+
     for (const [k, v] of Object.entries(uniforms)) {
-      if (k.startsWith('u_custom_') || !k.startsWith('u_')) {
-        const loc = gl.getUniformLocation(program, k);
-        if (!loc) continue;
-        if (typeof v === 'number') {
-          gl.uniform1f(loc, v);
-        } else if (Array.isArray(v)) {
-          if (v.length === 2) gl.uniform2f(loc, v[0], v[1]);
-          else if (v.length === 3) gl.uniform3f(loc, v[0], v[1], v[2]);
-          else if (v.length === 4) gl.uniform4f(loc, v[0], v[1], v[2], v[3]);
-        }
+      if (knownKeys.has(k)) continue;
+      const loc = gl.getUniformLocation(program, k);
+      if (!loc) continue;
+      if (typeof v === 'number') {
+        gl.uniform1f(loc, v);
+      } else if (Array.isArray(v)) {
+        if (v.length === 2) gl.uniform2f(loc, v[0], v[1]);
+        else if (v.length === 3) gl.uniform3f(loc, v[0], v[1], v[2]);
+        else if (v.length === 4) gl.uniform4f(loc, v[0], v[1], v[2], v[3]);
       }
     }
   }
