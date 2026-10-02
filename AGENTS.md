@@ -27,3 +27,10 @@ The agent/developer **MUST** immediately append a detailed entry into [`history.
   - Avoid proprietary or non-standard GLSL extensions without analytical fallbacks (e.g., avoid bare `fwidth()` in WebGL 1 without `GL_OES_standard_derivatives`).
 - **Interactive Controls**:
   - All interactive canvas controls (buttons, sliders, switches) must feature explicit Signed Distance Field (SDF) tactile feedback (knobs, glowing rings, press states, and cursor updates) and support pointer capture for reliable off-boundary dragging.
+
+---
+
+## 3. Project Commands
+- **Dev Server**: `npm run dev` (runs at `http://localhost:5173/`)
+- **Typecheck & Production Build**: `npm run build` (`tsc && vite build`)
+- **Preview Build**: `npm run preview`
