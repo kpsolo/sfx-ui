@@ -285,6 +285,25 @@ Every significant update or decision recorded in this file should follow the str
 
 ---
 
+### [2026-10-03] — Milestone 6.6: Resolution Fix for High-DPI Auto-Scale
+- **Context & Motivation**: After the production release, the user reported "very bad resolution" on the live site. On a 2× DPR display in Auto mode, the shader resolution dropped to 0.5×, meaning each shader pixel covered 4×4 device pixels (4× resolution loss), making borders, knobs, focus rings and controls look very blocky.
+- **Architectural Decision**:
+  - Change MIN_MATERIAL_SCALE from an absolute constant (0.5) to a DPR-relative minimum: `max(0.5, contentScale / 2)`.
+  - On a 1× display: minimum is 0.5× (each shader pixel covers 2×2 CSS pixels, reasonable for optimization).
+  - On a 2× display: minimum is 1.0× (each shader pixel covers 2×2 device pixels, acceptably sharp).
+  - On a 1.5× display: minimum is 0.75× (compromise).
+  - This preserves the original intent (allow adaptive scaling when surfaces dominate frame cost) while ensuring high-DPR displays never drop below a readable resolution.
+- **Root Cause**: The previous auto-scale allowed aggressive downsampling to MIN_MATERIAL_SCALE = 0.5 on all displays, which was measured on an iGPU that hit 0.5× in auto mode at ~30 fps. The measurement did not account for how this resolution looked on high-DPR devices where CSS pixels are already scaled by DPR.
+- **Implementation Details**: `gpu/Renderer.ts` (methods `materialScale` and `adaptScale`: compute `minScale = max(MIN_MATERIAL_SCALE, cs / 2)` and use it as the lower bound for both the adaptive scale and the step-down check).
+- **Verification & Outcome**:
+  - `npm run typecheck` and `npm run build` pass.
+  - `npm run build:pages` builds successfully.
+  - On a 2× display at low fps, the auto-scale now steps down as: 2.0 → 1.75 → 1.5 → 1.25 → 1.0 (stops), instead of 2.0 → 1.75 → 1.5 → 1.25 → 1.0 → 0.75 → 0.5.
+  - Button borders and control rims remain visibly crisp even when shaders step down to their minimum on high-DPR displays.
+  - Not yet verified in the user's browser on the live site (CI/CD pending).
+
+---
+
 ## Future Roadmap & Architecture Proposals
 - **Renew the origin-trial token before 2026-10-20**, and move it to the `ORIGIN_TRIAL_TOKEN` repository variable once `gh` or web access to settings is convenient (renewal then needs no commit).
 - **Single-pass final compositor:** composite all layers (upsampled surfaces + HTML content) in one full-resolution pass, to lift the ~52 fps ceiling a 5 Mpx frame hits on integrated GPUs and improve Auto beyond ~29 fps.

@@ -741,7 +741,8 @@ export class Renderer {
   private materialScale(contentScale: number): number {
     if (this.target || this.quality === 'sharp') return contentScale;
     if (this.quality === 'fast') return Math.min(contentScale, 1);
-    return Math.min(this.autoScale ?? contentScale, contentScale);
+    const minScale = Math.max(MIN_MATERIAL_SCALE, contentScale / 2);
+    return Math.max(minScale, Math.min(this.autoScale ?? contentScale, contentScale));
   }
 
   /**
@@ -768,11 +769,13 @@ export class Renderer {
       this.perf.warmup--;
       return;
     }
-    const current = this.materialScale(this.contentScale());
-    if (fps < AUTO_SCALE_TARGET_FPS && current > MIN_MATERIAL_SCALE) {
+    const cs = this.contentScale();
+    const current = this.materialScale(cs);
+    const minScale = Math.max(MIN_MATERIAL_SCALE, cs / 2);
+    if (fps < AUTO_SCALE_TARGET_FPS && current > minScale) {
       this.perf.slowWindows++;
       if (this.perf.slowWindows >= 2) {
-        this.autoScale = Math.max(MIN_MATERIAL_SCALE, current - AUTO_SCALE_STEP);
+        this.autoScale = Math.max(minScale, current - AUTO_SCALE_STEP);
         this.perf.slowWindows = 0;
         this.perf.warmup = 1;
       }
