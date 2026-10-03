@@ -270,7 +270,25 @@ Every significant update or decision recorded in this file should follow the str
 
 ---
 
+### [2026-10-03] — Milestone 6.5: First Production Release, Origin Trial & Branch Cleanup
+- **Context & Motivation**: First deployment of the 6.4 setup to https://kpsolo.github.io/sfx-ui/. The user then provided an HTML-in-Canvas origin-trial token and asked to remove the stale branches.
+- **Root Cause (first deploy served a blank page)**: The live HTML loaded `/src/main.tsx` and `/favicon.svg` (both 404), so the raw repository files had been published. Actions showed two deploys on `release`: our "Deploy to GitHub Pages" and GitHub's own **"pages build and deployment"** (`pages-build-deployment`). The latter exists only while the Pages source is "Deploy from a branch"; it ran after ours and overwrote the built site. A later re-run of that same workflow republished the source again. Fix: Pages source = **GitHub Actions**, then run "Deploy to GitHub Pages". Documented in `deploy/README.md` Troubleshooting and CLAUDE.md §5.
+- **Architectural Decision**:
+  - Origin-trial token stored in `deploy/.env.pages`. `gh` isn't installed, so the repository-variable route wasn't available; tokens are public anyway. Decoded payload: origin `https://kpsolo.github.io:443`, feature `HTMLInCanvas`, **expiry 2026-10-20 00:00 UTC**. Renewal steps are in `deploy/README.md`.
+  - Remote branches reduced to `main` (default) and `release`. `master` and `deploy` pointed at `fd8ed2c`, which is in `main`'s history, so nothing was lost.
+- **Verification & Outcome** (user's Chrome 154):
+  - After the source switch, the live site loads `/sfx-ui/assets/index-*.js`, renders 3 layers, loads both self-hosted fonts and the animated favicon, has no failed requests and a clean console, and the dev hooks are stripped.
+  - A real click on the nav "Data" button scrolled the page layer.
+  - Token release (`521f6e4`): the meta tag was live about 40 s after the push (curl poll), with no origin-trial console warnings.
+  - Not verifiable here: the token's effect in a Chrome without the flag (the user's Chrome has the flag on).
+  - `git ls-remote` shows only `main` and `release` at `521f6e4`.
+
+---
+
 ## Future Roadmap & Architecture Proposals
-- **WebGPU WGSL Native Pipeline**: Provide an optional WebGPU pipeline alongside WebGL2 for compute-driven particles and high-throughput physical simulations directly within canvas widgets.
-- **Text Rasterization in Canvas**: Integrate signed distance field font rendering (msdf-bmfont) to render crisp vector typography directly in pure canvas mode without DOM overlays.
-- **State Serialization**: Support exporting and importing design system token states as JSON or CSS Custom Properties.
+- **Renew the origin-trial token before 2026-10-20**, and move it to the `ORIGIN_TRIAL_TOKEN` repository variable once `gh` or web access to settings is convenient (renewal then needs no commit).
+- **Single-pass final compositor:** composite all layers (upsampled surfaces + HTML content) in one full-resolution pass, to lift the ~52 fps ceiling a 5 Mpx frame hits on integrated GPUs and improve Auto beyond ~29 fps.
+- **Reload crash:** Chrome 154 crashed the tab ("Target crashed") several times when navigating away from the live canvas, even with the GPU released on `pagehide`. Reduce to a minimal repro and report it if it's a Chromium bug.
+- **Live verification gaps:** Modal (frost + dissolve), Tooltip, keyboard focus rings, and the origin-trial path without the flag.
+- **WebGPU compute:** particles and simulations driven by compute shaders inside materials (the device and bind-group plumbing already exist).
+- **Track API renames:** when Chrome 155+ ships the explainer shapes (`content="drawable"`, `{ texture, size }` destinations, `updateElementGeometry` hit testing), drop the Chrome 154 fallbacks in `gpu/htmlInCanvas.ts`.

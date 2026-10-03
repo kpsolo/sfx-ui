@@ -59,3 +59,7 @@ The agent/developer **MUST** immediately append a detailed entry into [`history.
 - `main` is development: `.github/workflows/ci.yml` typechecks and runs the Pages build on every push and PR.
 - `release` is production: `.github/workflows/deploy.yml` publishes to GitHub Pages on every push. Never push to `release` without the user asking; it is a public deployment.
 - Deployment settings and the release/rollback runbook live in `deploy/` (`deploy/README.md`). Keep deploy-specific values there, not in `vite.config.ts`.
+- Only `main` and `release` exist on the remote. Live site: https://kpsolo.github.io/sfx-ui/.
+- The Pages source must be **GitHub Actions**. A `pages-build-deployment` run in Actions means it's set to "Deploy from a branch", which publishes unbuilt source (blank page loading `/src/main.tsx`). Never re-run that workflow.
+- The origin-trial token in `deploy/.env.pages` expires **2026-10-20**. When working near or after that date, remind the user to renew it (steps in `deploy/README.md`).
+- Verify a release with `curl` on the live URL (cache-busting query) and in Chrome via Claude in Chrome. A tab in the background reports `document.hidden` and paints nothing, so take a screenshot first to bring it forward.

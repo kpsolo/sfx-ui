@@ -2,7 +2,9 @@
 
 An experimental React UI kit where **every pixel comes from a WebGPU shader**, yet every element stays **real HTML**: laid out by CSS, focusable, hit-tested, selectable and readable by screen readers.
 
-It is built on the WICG [HTML-in-Canvas](https://github.com/WICG/html-in-canvas) API. The page's HTML lives inside a `<canvas content="drawable">`. The browser lays it out but doesn't paint it. SFX rasterizes it into GPU textures and composites it with WGSL materials. That makes things possible that CSS can't do:
+**Live demo: https://kpsolo.github.io/sfx-ui/** (Chrome with HTML-in-Canvas; see Requirements).
+
+It is built on the WICG [HTML-in-Canvas](https://github.com/WICG/html-in-canvas) API. The page's HTML lives inside a `<canvas layoutsubtree>` (also marked `content="drawable"` for newer builds). The browser lays it out but doesn't paint it. SFX rasterizes it into GPU textures and composites it with WGSL materials. That makes things possible that CSS can't do:
 
 - **Glass that really refracts what's behind it**, including the live HTML of other layers (the nav bar bends the page scrolling under it; the modal scrim blurs the real page).
 - **Effects on the content itself**: ripple, liquid warp, glitch, pixelate, chroma split, hologram and dissolve, applied to live text and form controls that stay interactive.
@@ -13,7 +15,7 @@ It is built on the WICG [HTML-in-Canvas](https://github.com/WICG/html-in-canvas)
 | | |
 |---|---|
 | Browser | Chrome / Chromium with HTML-in-Canvas: **verified on Chrome 154**; the newer 155+ API shape is handled too |
-| Flag | `chrome://flags/#canvas-draw-element` → Enabled (or an origin-trial token) |
+| Enablement | `chrome://flags/#canvas-draw-element` → Enabled. On the live demo, an origin-trial token (valid until **2026-10-20**) enables it without the flag on Chrome versions covered by the trial |
 | GPU | WebGPU. Text always renders at full resolution in the default **Auto** quality; only shader effects lower their resolution on slow GPUs. **Sharp** / **Auto** / **Fast** can be chosen in the nav |
 
 Other browsers get a gate screen showing exactly which capability is missing.
@@ -35,7 +37,13 @@ npm run preview:pages  # serve that build at http://localhost:4173/sfx-ui/
 
 ## Deploying
 
-`main` is development: CI typechecks and builds it on every push and PR. **`release` is production: pushing to it publishes the site to GitHub Pages** at https://kpsolo.github.io/sfx-ui/. The one-time repository setup, the release and rollback commands, and the deploy settings are in [`deploy/README.md`](deploy/README.md).
+The repository has two branches. `main` is development: CI typechecks and builds it on every push and PR. **`release` is production: pushing to it publishes the site to GitHub Pages** at https://kpsolo.github.io/sfx-ui/ (about 40 s).
+
+```bash
+git push origin main:release
+```
+
+[`deploy/README.md`](deploy/README.md) covers the repository setup, renewing the origin-trial token (expires 2026-10-20), rollback, and troubleshooting. The most important item there: the Pages source must stay **GitHub Actions**, never "Deploy from a branch".
 
 In dev, `await __sfxSelfTest()` in the console compiles every material and renders them, plus each content effect, off-screen. It needs WebGPU only, not HTML-in-Canvas.
 
