@@ -1,0 +1,27 @@
+name: CI
+
+# Development: every push to main and every pull request must typecheck and build,
+# so the release branch only ever receives code that builds.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      # Same build as production (base path, origin-trial meta), so path issues show up before release.
+      - run: npm run build:pages

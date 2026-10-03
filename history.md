@@ -117,6 +117,159 @@ Every significant update or decision recorded in this file should follow the str
 
 ---
 
+### [2026-10-03] — Milestone 5: All DOM Components on One Shared WebGL Context (v0.3.0-unified)
+- **Context & Motivation**:
+  - Every DOM component still created its own WebGL context through `ShaderCanvas`. The Components showcase mounted **24** shader canvases, and a canvas kept its context after it scrolled away. So a full scroll-through went past Chromium's 16-context ceiling, and the oldest surfaces were evicted.
+  - The *Active WebGL Contexts* counter decremented when a surface scrolled out of view, even though its canvas still held the context. The counter under-reported.
+  - `UnifiedShaderEngine` (Milestone 3) existed, but `App` did not mount it and no component used it. It also did not bind the color tokens and ignored opacity.
+- **Architectural Decision**:
+  - *Option A, the Milestone 3 design (one full-screen canvas behind the DOM, scissor per element):* rejected for the DOM components. A shader drawn behind the DOM is hidden by every opaque ancestor. The app root (`bg-[#07090e]`) and 15 showcase panels have opaque backgrounds. It would also reorder layers (shader under the element's own translucent background and `backdrop-blur`), break `mix-blend-screen` overlays, and ignore `overflow-hidden` clipping, transforms and modal stacking. Every container would need restyling.
+  - *Option B, one canvas on top of the DOM:* rejected. Background shaders would cover text and controls.
+  - **Chosen, option C: a shared off-screen WebGL context, blitted into 2D canvases.** Each `ShaderCanvas` keeps a `<canvas>` in place, but uses a **2D** context. The engine renders every on-screen surface into one off-screen WebGL canvas and copies each region out with `drawImage`. 2D canvases do not count toward the WebGL context limit. Because the surface stays in the DOM, stacking, opacity, blend modes, border-radius clipping and transforms behave exactly as before. So no component needed any change.
+  - **Atlas packing:** the first version rendered surfaces one at a time into the same region. Each `drawImage` then forced a GPU resolve, which cost about 0.3 ms per surface regardless of shader cost. Surfaces are now shelf-packed into one atlas (max 2048², overflow spills into extra pages). The buffer is resolved once per page.
+- **Implementation Details**:
+  - `core/unified/UnifiedShaderEngine.ts`: rewritten. Off-screen canvas, `antialias: false` (full-quad passes gain nothing from MSAA), and a shelf-packed atlas with layout reads before canvas writes. Off-screen surfaces are skipped per frame. Color tokens and `reducedMotion`/`globalSpeed` are bound from the globals. The frame delta is capped at 0.1 s. Context loss is handled (the `ShaderEngine` is rebuilt on restore), compile errors are reported per surface through `onError`, and `destroy()` calls `WEBGL_lose_context`, so StrictMode double-mounts release the context immediately.
+  - `core/unified/types.ts`: `RegisteredElement` is replaced by `RegisteredSurface`/`SurfaceState`. Added `UnifiedGlobals` and `UnifiedStats`.
+  - `core/unified/useUnifiedShader.ts`: registers once per surface and pushes prop changes through `engine.update`. The `uniforms` prop now updates live (previously it was captured once).
+  - `core/unified/UnifiedContext.tsx`: no longer renders a DOM canvas or wrapper. It owns the engine lifecycle and takes `globals` and `enabled`. `ShaderProvider` mounts it automatically, and the master shader toggle releases the context entirely.
+  - `core/ShaderCanvas.tsx`: now a thin slot (a 2D canvas plus `useUnifiedShader`). Removed the per-element `getContext('webgl')`, the RAF loop, the `IntersectionObserver` and the dead pointer handlers (the wrapper is `pointer-events-none`, so they never fired).
+  - `core/ShaderContext.tsx`: memoized context-count callbacks, builds `UnifiedGlobals`, mounts `UnifiedCanvasProvider`.
+  - `canvas-ui/PureCanvasView.tsx`: counts its own (separate) context. `showcase/SystemTokens.tsx`: shows real engine stats (registered and on-screen surfaces).
+- **Verification & Outcome**:
+  - `npm run build` (`tsc && vite build`): passes.
+  - Components tab after a full scroll-through: 24 DOM shader canvases, **0** of them holding a WebGL context (checked with `getContext('2d') !== null`). 1 shared context in total. With the modal open: 27 surfaces, still 0 per-element contexts.
+  - Tokens tab counter: 1, then 0 with *Master Shader Toggle* off, then 1 again when turned back on.
+  - Visual parity: screenshots of the hero, buttons, forms, tabs, progress and modal sections match the pre-migration baseline.
+  - Pixel check: a Studio shader `vec4(v_uv, u_hover, 1)` reads (128,127,0,255) at the center. On synthetic hover it reads (128,127,255,255), and it returns to 0 after leaving. Compile errors show in the red overlay and clear once the code is fixed.
+  - Timing (synchronous benchmark, DPR 1, showcase surface sizes): per-surface blits took 6.6 ms/frame for 22 surfaces. The atlas takes **4.3 ms/frame for 22 surfaces** and **8.4 ms/frame for 66**. Live page: **60.3 fps** (worst frame 17.2 ms) at DPR 2 with the browser visible. An fps measurement of the old per-element code could not be taken because the browser pane was hidden during that run.
+  - Fresh tab through all four app tabs: no console errors.
+- **Known remaining gaps**: `u_mouse` is still fixed at center (the components don't track pointer position). The Pure Canvas tab runs a second, separate context (2 in total while it is open).
+
+---
+
+### [2026-10-03] — Milestone 6: Rebuild as an HTML-in-Canvas × WebGPU Shader UI Kit (v0.4.0-canvas)
+- **Context & Motivation**:
+  - The user asked for a "real shader UI kit" in this experimental project, with permission to rebuild every element without migration, using modern features such as HTML-in-Canvas.
+  - Previous generations could only decorate HTML: shaders drew *behind* DOM text (Milestones 1–5) or replaced the DOM with SDF widgets that lost accessibility (Pure Canvas, Milestone 3). Neither could act on the content itself, refract what is really behind an element, or composite layers.
+- **Architectural Decision**:
+  - **HTML-in-Canvas (WICG, Chromium 155+ shape)**: `<canvas content="drawable">` lays out its `drawable` children (layout, hit testing, focus, a11y stay native) without painting them. `GPUQueue.drawElementImageToTexture()` rasterizes a child into a WebGPU texture. `canvas.updateElementGeometry()` keeps hit testing aligned with where it is drawn, and the canvas `paint` event (with `changedElements`) plus `requestPaint()` drive updates. Pre-155 names (`layoutsubtree`, `texElementImage2D`) are detected and reported, not supported. All API calls are isolated in `kit/gpu/htmlInCanvas.ts`.
+  - **Canvas-only (user decision)**: browsers without the API get a gate screen with a live capability checklist and setup steps. There is no DOM fallback.
+  - **WebGPU + WGSL (user decision)** instead of WebGL2/GLSL: one device, explicit bind group layouts, storage buffers, async pipeline creation, compute available for future work. Old GLSL presets were ported to WGSL materials.
+  - **Layer/surface model**: *layers* are direct drawable children of the canvas (page, nav, overlays via portal). *Surfaces* are any elements that register a material. Per frame, for each layer in z-order: its surfaces are drawn in DOM order, then the layer's HTML snapshot is composited through **content effects** (ripple, liquid, glitch, pixelate, chroma, hologram, dissolve) scoped to the surfaces' shapes. Backdrop materials (glass, frost) get a scene-region copy first, so they truly refract and blur everything painted below them, including other layers' live HTML.
+  - **Tokens**: CSS custom properties (`--sfx-*`, 4 themes via `data-theme`) are the single source for Tailwind (`sfx-*` colors) and the GPU frame uniform. This removes the old Tailwind/runtime palette split.
+  - Fonts are self-hosted (`@fontsource-variable/*`) because HTML-in-Canvas snapshots leave out cross-origin resources.
+- **Implementation Details**:
+  - Removed: `src/components`, `src/core` (ShaderEngine, ShaderCanvas, unified engine), `src/canvas-ui`, `src/shaders` (GLSL), `src/showcase`, `src/index.ts`. The uncommitted Milestone 5 shared-context code was removed with them.
+  - `src/kit/gpu/`: `Renderer.ts` (layers, surfaces, eased interaction state, backdrop copies, content and present passes, material registry with `setMaterial()` for live WGSL, lazy context configuration for StrictMode safety), `layout.ts` (Frame 160 B and Surface 144 B byte layouts), `wgsl/common.ts` (structs, SDF/noise helpers, instanced vertex stage, shared focus ring), `wgsl/materials.ts` (18 materials: solid, glass, frost, aurora, plasma, grid, electric, hologram, dither, starfield, ripple, pill, switch, slider, check, progress, ring, indicator), `wgsl/content.ts` (content-effect compositor and present pass with vignette/grain), `support.ts`, `htmlInCanvas.ts`.
+  - `src/kit/stage/`: `Stage` (gate or canvas, device-loss rebuild), `Layer` (drawable child, `portal` for overlays), `useSurface`, `Surface`, `htmlContentSource`, `UnsupportedGate`.
+  - `src/kit/components/`: Button, Card, Input, Textarea, Switch, Slider, Checkbox, Badge, Progress, Avatar, Tabs (liquid indicator), Modal (frost scrim + dissolving glass panel, focus trap), Select (listbox popup on its own glass layer), Tooltip (hologram layer). All are native elements with no CSS backgrounds under surfaces, and focus rings are drawn by the shader.
+  - `src/app/`: showcase with a starfield background layer, scrolling page layer, glass nav layer, sections for components, forms, materials, live-HTML effects, data display, and a WGSL Studio (live compile with line-mapped errors, applied to real components).
+  - `src/kit/dev/selfTest.ts` (`window.__sfxSelfTest()` in dev): compiles all materials and renders them plus every content effect off-screen with synthetic content, without HTML-in-Canvas.
+- **Verification & Outcome**:
+  - `npm run build` (`tsc && vite build`): passes.
+  - In-app browser (Chromium 152, WebGPU, no HTML-in-Canvas):
+    - The gate screen correctly reports WebGPU ✓, adapter ✓, Chromium 152 < 155 ✕ and the three API entry points ✕.
+    - GPU self-test: 18/18 materials compile. All 7 content effects composite text. Frame CPU time 0.6–1.7 ms for 25 surfaces with 2 backdrop copies.
+    - On-screen swap-chain path (normal DOM divs over a normal canvas, DPR 2, 2048×1536): 13 surfaces at 0.2 ms CPU per frame. Glass visibly refracts and blurs the grid behind it. Synthetic pointer events produce hover rings and a press shockwave.
+  - **Not yet verified:** the live HTML-in-Canvas path (snapshot upload, `updateElementGeometry` hit-test alignment, paint-event loop) needs Chrome 155+ with `chrome://flags/#canvas-draw-element`. The `canvasTransform` convention (`translate(x,y)·scale(dpr)` in backing-store px) is the first thing to confirm there.
+
+---
+
+### [2026-10-03] — Milestone 6.1: First Live Run in Chrome 154: Black Screen Diagnosis & Fixes
+- **Context & Motivation**:
+  - The user reported "nothing works". Their Chrome 154 (flag enabled) showed a black screen with no interaction. This was the first time the HTML-in-Canvas path ran at all.
+- **Root Causes (measured with probes in the user's Chrome via Claude in Chrome)**:
+  1. **Opt-in attribute.** Chrome 154 only honours `layoutsubtree`. The explainer's newer `content="drawable"` is ignored, so the canvas children got no layout boxes (every layer 0×0, no hit testing).
+  2. **Canvas-child layout.** Children are forced to `position: static` and each is laid out independently at the canvas origin. `absolute inset-0` layers collapsed (the background layer was 0×0, and the page layer was content-height, so it couldn't scroll).
+  3. **Upload signature.** Chrome 154's `GPUQueue.drawElementImageToTexture(source, destination)` takes `{ source: el }` and `{ destination: { texture } }` (dictionary `GPUCopyElementImageDestination`), not the explainer's `{ texture, size }`. The TypeError was thrown inside the paint handler on every frame, so nothing was ever presented. The legacy `copyElementImageToTexture` also exists, with a different source dictionary.
+  4. **Stale modules (environment).** The user's dev server served the kit through `/@fs/C:/Work/...`, meaning it was started from a differently-cased path. On Windows this breaks Vite's file watching, and edits never reached the browser.
+  5. **Performance.** On the user's Intel Gen-9 iGPU at DPR 2 (3284×1560, 5.1 Mpx) the page ran at 15 fps. Isolation runs: `render()` stubbed out gave 52–60 fps. A clear-and-present-only frame gave 52 fps at DPR 2 and 60 at DPR 1. The full scene gave 52 fps at DPR 1, 27 at 1.5 and 15 at 2. Swapping glass for solid, removing the starfield, or removing content composites each gained only 0–4 fps, so the cost is fill rate. Separately, CSS `animate-pulse` on badge dots made the browser re-rasterize the whole page layer every frame (2 changed elements per frame; 0.1 with CSS animations off).
+- **Architectural Decision**:
+  - Set both opt-in attributes (`layoutsubtree` and `content="drawable"`).
+  - Layers are static, full-size blocks by default (`fill` → width/height 100%), and absolutely positioned content lives in a `relative` wrapper inside the layer.
+  - **Overlay placement**: margins are computed but don't move canvas children, and `updateElementGeometry(translate…)` moved neither the drawing position nor hit testing in Chrome 154. A **CSS `transform: translate()` on the layer does move hit testing and `getBoundingClientRect`, and the snapshot still draws correctly**, so `Layer at={{ left, top }}` is a translate. A renderer-side draw offset was tried and reverted.
+  - **Clipped shadows** (reported by the user): `glow()` radii were in device px while quad margins are in CSS px, so at scale 1 the drop shadow was still ~17% opaque at the quad edge and showed as a dark rectangle. `glow()` radii are now CSS px (× `frame.dpr`). The material wrapper multiplies everything outside the shape by an edge fade that reaches 0 at the quad margin, so no material can end in a hard line. The shadow radius dropped from 10 to 5 CSS px.
+  - The upload adapter tries the explainer shape first, falls back to the Chrome 154 nested shape on TypeError, and remembers which one works. A failed upload is caught per layer, so it can't kill the frame.
+  - **Adaptive resolution** (`renderer.renderScale = 'auto'`): start at the display DPR (max 2) and drop by 0.25 after two consecutive one-second windows below 48 fps, down to a minimum of 1. It never climbs back automatically, to avoid oscillating at the vsync cap. This works because the snapshots rasterize at the canvas backing-store scale (measured: a 120×40 CSS element on a 2×-backed canvas produced a 240×80 snapshot), so text and shaders stay consistent at any scale.
+  - Badge dots are static. Rule: no continuous CSS animations inside layers.
+  - The starfield uses a fixed star scale (its size was relative to the surface, which produced blobs at full screen).
+  - `pagehide` destroys the renderer. The tab crashed ("Target crashed") twice while reloading mid-frame; the cause is unconfirmed, so this is a precaution.
+- **Implementation Details**: `gpu/htmlInCanvas.ts` (attributes, upload adapter), `stage/Layer.tsx` (`fill`, `at`), `components/Overlay.tsx`, `app/App.tsx`, `gpu/Renderer.ts` (renderScale/adaptScale, `fps`/`scale` stats, per-layer upload guard), `components/Display.tsx`, `wgsl/materials.ts` (starfield), `stage/Stage.tsx` (pagehide, dev `window.__sfxRenderer`), `app/NavBar.tsx` (fps · scale badge), `.claude/launch.json` (port 5174).
+- **Verification & Outcome** (user's Chrome 154, Intel Gen-9, via Claude in Chrome):
+  - Layers lay out at 1642×780 (background and page) and 1642×80 (nav).
+  - The page renders with real HTML through WebGPU: liquid content effect on live text, nav glass refracting the scrolling page, progress bars, tab indicator, avatar rings, badges, Studio material compiled and applied. No console errors.
+  - Hit testing: `elementFromPoint` at the layout centers returns the right buttons in the page and nav layers. Real mouse clicks: "Data" in the nav (scrolled the page layer) and the "Members" tab (`aria-selected` switched).
+  - Auto scale settled at 1.0, giving **60 fps** (was 15).
+  - Select overlay: the popup draws under its trigger (zoomed screenshot), a real click on "Aurora" switches `data-theme` to `aurora` and closes the popup, and the theme re-reads into the shaders.
+  - Shadows: a zoomed screenshot of the materials grid shows soft card shadows with no rectangular cut-offs.
+  - GPU self-test (in-app browser): 18/18 materials compile, and all 7 content effects have coverage.
+  - `npm run build` passes.
+  - Not yet exercised live: Modal (frost + dissolve), Tooltip, keyboard focus rings, and whether the reload crash still happens with the `pagehide` precaution.
+
+---
+
+### [2026-10-03] — Milestone 6.2: Tighter Shadows & GitHub Pages Deployment
+- **Context & Motivation**: The user asked for smaller shadows and everything needed to publish on GitHub Pages.
+- **Architectural Decision**:
+  - Contact shadow (`SHADOW` in `wgsl/materials.ts`): radius 5 → 2.5 CSS px, opacity 0.4 → 0.35, no offset.
+  - Deployment through GitHub Actions (`actions/upload-pages-artifact` + `actions/deploy-pages`) rather than a `gh-pages` branch: no build output in git, and a deploy runs on every push to `main`.
+  - Base path from `PAGES_REPO` (repo name only). Passing `/sfx-ui/` was rewritten to `/Program Files/Git/sfx-ui/` by Git Bash during local Windows builds.
+  - Optional `ORIGIN_TRIAL_TOKEN` repository variable, injected by a small Vite plugin as `<meta http-equiv="origin-trial">`, so trial-covered Chrome versions don't need the flag.
+  - Auto-scale ignores measurement windows longer than 2 s (hidden-tab pauses), which previously counted as slow seconds.
+  - Added `public/favicon.svg` (the old `/vite.svg` link was a 404).
+- **Implementation Details**: `vite.config.ts`, `.github/workflows/pages.yml`, `index.html`, `public/favicon.svg`, `wgsl/materials.ts`, `gpu/Renderer.ts`, README "Deploying to GitHub Pages".
+- **Verification & Outcome**:
+  - `PAGES_REPO=sfx-ui npm run build`: asset, font and favicon URLs are all under `/sfx-ui/`, and no token meta is emitted without a token. With a test token, the meta is injected.
+  - Production bundle served by `vite preview` at `/sfx-ui/` in the user's Chrome 154: renders (screenshot), both self-hosted fonts load, there are no failed requests, and the dev hooks are absent.
+  - A zoomed screenshot shows the tighter shadow with no clipping.
+  - The workflow itself has not run yet: Pages must be enabled and the change pushed.
+
+---
+
+### [2026-10-03] — Milestone 6.3: Mixed-Resolution Rendering & Quality Switch
+- **Context & Motivation**: The user asked why the page turned blurry after a few seconds while fps rose. The auto resolution from 6.1 lowered the whole canvas, text included, to 1× on their 2× display, and never climbed back. The user chose "keep text sharp, lower only shaders", plus a user-facing quality switch.
+- **Measurement first** (user's Chrome 154, Intel Gen-9, GPU time per frame via `render()` + `onSubmittedWorkDone()` with the tab hidden, so absolute values are inflated): at 2×, full 137 ms, surfaces only 115, content only 48, clear + present 47. Shader surfaces are the cost and HTML content is nearly free, so lowering only the surface resolution targets the right thing.
+- **Architectural Decision**:
+  - Two scales: content `cs` (canvas backing store and HTML snapshots) and material `ms` (surfaces).
+  - **Mixed path** (`ms < cs`): per layer, surfaces render into a material-res `layerBuf`. Glass samples `layerCopy` (this layer's earlier surfaces) over `sceneCopy` (lower layers), so refraction stays exact across and within layers. The upsample is merged into the layer's content pass (`content + surfaces·(1−a)`); only layers without HTML need a separate resolve pass.
+  - **Direct path** (`ms == cs`): surfaces draw straight into the scene as before, with no extra passes.
+  - The scene pass opens lazily, so the first clear doesn't cost an empty full-res pass.
+  - `Quality = 'sharp' | 'auto' | 'fast'` replaces `renderScale`:
+    - sharp: text 2×, shaders 2×.
+    - auto: text 2×; shaders step down 0.25 per two slow seconds, to a minimum of 0.5.
+    - fast: text 1×, shaders 1×.
+    - `Stage quality`, `renderer.setQuality()`, a nav Select, and the choice persists in localStorage.
+  - `Select` gained `hideLabel`, so both nav selects have accessible names.
+  - The grid material's sky stars are sized in CSS px (they became blocky squares at low shader resolution).
+- **Implementation Details**: `gpu/Renderer.ts` (rewritten frame: plans, two frame uniforms, `layerBuf`/`layerCopy`/`sceneCopy`, direct/mixed encode, quality API, stats `quality/contentScale/materialScale`), `wgsl/common.ts` (`layerBackdrop` binding, `backdropAt` composite), `wgsl/content.ts` (LayerU 304 B with resolve and regionScale, content pass composites `layerBuf`, new `RESOLVE_WGSL`), `gpu/layout.ts`, `stage/Stage.tsx`, `app/App.tsx`, `app/NavBar.tsx`, `components/Overlay.tsx`, `wgsl/materials.ts`.
+- **Verification & Outcome**:
+  - `tsc --noEmit` passes.
+  - GPU self-test (direct path): 18/18 materials compile, all 7 effects have coverage, and sampled pixels are identical to before.
+  - Mixed-path harness in the in-app browser (text 2×, shaders 1×): crisp text, glass refracting across layers (nav over card) and within a layer (input over card), via the merged content pass.
+  - User's Chrome, visible tab:
+    - sharp 13–16 fps;
+    - auto settles at text 2×, shaders 0.5×, **26–31 fps**, and a zoomed screenshot confirms crisp body text;
+    - fast 39–41 fps on the hero view.
+  - Limitation: on this GPU, clear + present of a 5 Mpx frame alone caps near 52 fps, so full-resolution text can't reach 60 there. A single-pass final compositor (all layers composited in one full-res pass) is the next candidate.
+
+---
+
+### [2026-10-03] — Milestone 6.4: Dev / Production Structure with Release-Branch Deploys
+- **Context & Motivation**: The user wants the project ready for development and production, deploying from a release branch, with deploy settings in a separate folder.
+- **Architectural Decision**:
+  - `main` = development: `ci.yml` runs `npm ci`, typecheck and the Pages build on every push and PR. Building the production variant catches base-path issues early.
+  - `release` = production: `deploy.yml` builds `--mode pages` and publishes with `actions/deploy-pages` on every push to `release` (plus manual dispatch). It replaces the main-triggered `pages.yml` from 6.2.
+  - `deploy/` holds production settings (`.env.pages`: `PAGES_REPO`, optional `ORIGIN_TRIAL_TOKEN`; `*.local` overrides stay gitignored) and the runbook (`deploy/README.md`: one-time setup, release, rollback, local production preview).
+  - `vite.config.ts` reads `deploy/.env[.mode][.local]` itself rather than through `loadEnv`, because CI passes unset repository variables as empty strings, and `loadEnv` lets an empty value override the file. Non-empty environment variables still win.
+  - Scripts: `typecheck`, `build:pages`, `preview:pages`. Node 20 via `.nvmrc` and `engines`.
+- **Verification & Outcome**:
+  - `npm run build:pages` puts asset, font and favicon URLs under `/sfx-ui/` with no token meta.
+  - Setting `ORIGIN_TRIAL_TOKEN` in the environment injects the meta; a blank value is ignored.
+  - A plain `vite build` keeps base `/`.
+  - The workflows have not run yet: this needs the one-time setup in `deploy/README.md` (Pages source = GitHub Actions, and the `release` branch allowed in the `github-pages` environment) and a push.
+
+---
+
 ## Future Roadmap & Architecture Proposals
 - **WebGPU WGSL Native Pipeline**: Provide an optional WebGPU pipeline alongside WebGL2 for compute-driven particles and high-throughput physical simulations directly within canvas widgets.
 - **Text Rasterization in Canvas**: Integrate signed distance field font rendering (msdf-bmfont) to render crisp vector typography directly in pure canvas mode without DOM overlays.

@@ -1,39 +1,85 @@
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Theme tokens: the single source of truth for both Tailwind (`sfx-*` colors) and the GPU
+ * (read by the renderer into the frame uniform). Values are "r g b" (0-255).
+ * Fonts are self-hosted: HTML-in-Canvas snapshots leave out cross-origin resources.
+ */
+:root,
+[data-theme='neon'] {
+  --sfx-primary: 56 189 248;
+  --sfx-secondary: 129 140 248;
+  --sfx-accent: 244 63 94;
+  --sfx-bg: 6 8 13;
+  --sfx-surface: 22 28 44;
+  --sfx-text: 226 232 240;
+  --sfx-danger: 239 68 68;
+  --sfx-success: 16 185 129;
+}
+
+[data-theme='aurora'] {
+  --sfx-primary: 45 212 191;
+  --sfx-secondary: 167 139 250;
+  --sfx-accent: 244 114 182;
+  --sfx-bg: 5 11 15;
+  --sfx-surface: 16 32 38;
+  --sfx-text: 224 242 238;
+  --sfx-danger: 248 113 113;
+  --sfx-success: 74 222 128;
+}
+
+[data-theme='ember'] {
+  --sfx-primary: 251 146 60;
+  --sfx-secondary: 250 204 21;
+  --sfx-accent: 239 68 68;
+  --sfx-bg: 13 8 6;
+  --sfx-surface: 40 24 18;
+  --sfx-text: 254 243 230;
+  --sfx-danger: 248 113 113;
+  --sfx-success: 132 204 22;
+}
+
+[data-theme='mono'] {
+  --sfx-primary: 229 231 235;
+  --sfx-secondary: 156 163 175;
+  --sfx-accent: 255 255 255;
+  --sfx-bg: 9 9 11;
+  --sfx-surface: 32 32 36;
+  --sfx-text: 244 244 245;
+  --sfx-danger: 248 113 113;
+  --sfx-success: 163 230 53;
+}
 
 :root {
   color-scheme: dark;
 }
 
+html,
 body {
   margin: 0;
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background-color: #080b11;
-  color: #e2e8f0;
-  overflow-x: hidden;
+  background: rgb(var(--sfx-bg));
+  color: rgb(var(--sfx-text));
+  font-family: 'Inter Variable', system-ui, sans-serif;
+  overflow: hidden;
 }
 
-/* Custom crisp scrollbars */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+pre,
+code,
+kbd,
+samp,
+textarea.font-mono {
+  font-family: 'JetBrains Mono Variable', ui-monospace, monospace;
 }
 
-::-webkit-scrollbar-track {
-  background: #0d131f;
+/* Scrollbars are not part of HTML-in-Canvas snapshots; keep scroll containers clean. */
+.sfx-scroll {
+  scrollbar-width: none;
 }
-
-::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #334155;
-}
-
-/* Code fonts */
-pre, code, kbd, samp {
-  font-family: 'Fira Code', monospace;
+.sfx-scroll::-webkit-scrollbar {
+  display: none;
 }

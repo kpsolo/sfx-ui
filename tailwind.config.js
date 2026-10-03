@@ -1,35 +1,27 @@
 /** @type {import('tailwindcss').Config} */
+const token = (name) => `rgb(var(--sfx-${name}) / <alpha-value>)`;
+
 export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
-  darkMode: 'class',
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
-        cyber: {
-          bg: '#0a0d14',
-          surface: '#111726',
-          panel: '#161f33',
-          border: '#243252',
-          primary: '#38bdf8',
-          accent: '#a855f7',
-          neon: '#06b6d4',
-          glow: '#ec4899',
-          success: '#10b981',
-          warning: '#f59e0b',
-          danger: '#ef4444'
-        }
+        sfx: {
+          primary: token('primary'),
+          secondary: token('secondary'),
+          accent: token('accent'),
+          bg: token('bg'),
+          surface: token('surface'),
+          text: token('text'),
+          danger: token('danger'),
+          success: token('success'),
+        },
       },
       fontFamily: {
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['"Inter Variable"', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono Variable"', 'ui-monospace', 'monospace'],
       },
-      animation: {
-        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-      }
     },
   },
   plugins: [],
-}
+};

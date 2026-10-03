@@ -1,173 +1,121 @@
-# SFX-UI — Shader-Driven Extensible UI Design System
+# SFX UI: HTML-in-Canvas × WebGPU Shader UI Kit
 
-A modern, production-ready React design system where **every single standard UI component** (buttons, inputs, cards, dialogs, switches, sliders, checkboxes, badges, progress bars, tabs, dropdowns, tooltips, avatars, navigation) can host real-time GPU fragment shaders (WebGL / GLSL) on its surface, border, or interaction overlay.
+An experimental React UI kit where **every pixel comes from a WebGPU shader**, yet every element stays **real HTML**: laid out by CSS, focusable, hit-tested, selectable and readable by screen readers.
 
----
+It is built on the WICG [HTML-in-Canvas](https://github.com/WICG/html-in-canvas) API. The page's HTML lives inside a `<canvas content="drawable">`. The browser lays it out but doesn't paint it. SFX rasterizes it into GPU textures and composites it with WGSL materials. That makes things possible that CSS can't do:
 
-## 🌟 Key Features
+- **Glass that really refracts what's behind it**, including the live HTML of other layers (the nav bar bends the page scrolling under it; the modal scrim blurs the real page).
+- **Effects on the content itself**: ripple, liquid warp, glitch, pixelate, chroma split, hologram and dissolve, applied to live text and form controls that stay interactive.
+- **Materials as code**: 18 built-in WGSL materials, plus a Studio for writing your own and applying it to real components as you type.
 
-1. **Shader on Every Part**:
-   - Any component can render a shader on its **`background`**, **`border`**, or **`overlay`**.
-   - Built-in shaders include:
-     - `liquid-glass`: Frosted refractive glass with chromatic dispersion & SDF rounded bounds.
-     - `cyber-grid`: 3D perspective synthwave grid with horizon glow & pulse.
-     - `aurora-waves`: Flowing cosmic gradient ribbon flows.
-     - `electric-border`: High-voltage plasma beam tracing component perimeters.
-     - `hologram-scan`: Cybernetic CRT scanlines with micro-glitch interference.
-     - `plasma-flow`: Smooth fluid metaballs with vibrant multi-color blending.
-     - `starfield-warp`: Hyperspace cosmic particles reacting to cursor velocity.
-     - `matrix-dither`: Retro 8-bit Bayer matrix dithering over moving waves.
-     - `ripple-echo`: Expanding concentric click & hover shockwaves.
-     - `custom`: Arbitrary GLSL fragment shader injection with hot-reloading!
+## Requirements (canvas-only)
 
-2. **Solving the WebGL Context Limit**:
-   - Web browsers enforce an 8–16 active WebGL context ceiling per tab.
-   - SFX-UI features an intelligent RAF lifecycle: canvas renders are paused when off-screen via `IntersectionObserver` or idle, preventing context loss and maintaining steady 60/120 FPS.
+| | |
+|---|---|
+| Browser | Chrome / Chromium with HTML-in-Canvas: **verified on Chrome 154**; the newer 155+ API shape is handled too |
+| Flag | `chrome://flags/#canvas-draw-element` → Enabled (or an origin-trial token) |
+| GPU | WebGPU. Text always renders at full resolution in the default **Auto** quality; only shader effects lower their resolution on slow GPUs. **Sharp** / **Auto** / **Fast** can be chosen in the nav |
 
-3. **Accessibility First (A11y)**:
-   - Real semantic HTML elements (`<button>`, `<input>`, `<dialog>`, etc.) sit at the top z-index with native keyboard navigation, screen reader ARIA roles, and form autofill.
-   - Full `prefers-reduced-motion` compliance halts time loops and transitions gracefully.
-   - Zero-dependency CSS fallback mode when shaders are disabled.
+Other browsers get a gate screen showing exactly which capability is missing.
 
-4. **Live Shader Studio & Design Tokens**:
-   - Interactive GLSL editor in the demo app to prototype and hot-reload fragment shaders live on real UI components.
-   - Synchronized color tokens (`u_color_primary`, `u_color_accent`, `u_color_bg`) bound automatically to shader uniforms.
+> **Dev server on Windows:** start it from the exact-case path (`C:\Work\sfx-ui`). If the page loads modules from `/@fs/C:/Work/...`, Vite thinks the sources are outside its root, its file watcher misses edits, and the browser keeps running stale code.
 
----
+## Commands
 
-## 🚀 Getting Started
+Node 20+ (`.nvmrc`).
 
-### Prerequisites
-- Node.js >= 18
-- npm
-
-### Installation & Development
 ```bash
-# Install dependencies
 npm install
-
-# Start Vite development server
-npm run dev
-
-# Build production bundle
-npm run build
-
-# Preview build
-npm run preview
+npm run dev            # http://localhost:5173
+npm run typecheck      # tsc --noEmit
+npm run build          # build served from /
+npm run build:pages    # production build for GitHub Pages (settings in deploy/.env.pages)
+npm run preview:pages  # serve that build at http://localhost:4173/sfx-ui/
 ```
 
----
+## Deploying
 
-## 🛠️ Usage Examples
+`main` is development: CI typechecks and builds it on every push and PR. **`release` is production: pushing to it publishes the site to GitHub Pages** at https://kpsolo.github.io/sfx-ui/. The one-time repository setup, the release and rollback commands, and the deploy settings are in [`deploy/README.md`](deploy/README.md).
 
-### 1. Button with Electric Border
+In dev, `await __sfxSelfTest()` in the console compiles every material and renders them, plus each content effect, off-screen. It needs WebGPU only, not HTML-in-Canvas.
+
+## Usage
+
 ```tsx
-import { Button } from './components/Button/Button';
+import { Stage, Layer, Button, Card, Input } from './kit';
 
-export function MyView() {
-  return (
-    <Button variant="neon" shader="electric-border" shaderTarget="border">
-      Initialize Fusion
-    </Button>
-  );
-}
-```
-
-### 2. Card with Liquid Glass Shader
-```tsx
-import { Card } from './components/Card/Card';
-
-export function GlassPanel() {
-  return (
-    <Card variant="glass" shader="liquid-glass" cornerRadius={16}>
-      <h3 className="text-lg font-bold">Quantum Reactor</h3>
-      <p className="text-sm text-slate-300">Surface refracts based on cursor movement.</p>
+<Stage theme="neon">
+  {/* Layers are direct children of the canvas and fill the stage by default; higher z
+      refracts lower z. Canvas children are forced to position: static, so use `fill`/`at`,
+      not absolute/inset classes. */}
+  <Layer z={0} className="overflow-y-auto">
+    <Card material="aurora" fx="ripple">
+      <Input label="Still a real input" />
+      <Button variant="neon">Press me</Button>
     </Card>
-  );
-}
+  </Layer>
+  <Layer z={10} fill={false} className="w-full p-3">
+    <Card material="glass">Floating glass refracts the page below</Card>
+  </Layer>
+</Stage>
 ```
 
-### 3. Custom GLSL Fragment Shader on Any Element
+Any element can get a surface:
+
 ```tsx
-import { Button } from './components/Button/Button';
-import { COMMON_UNIFORMS_GLSL, GLSL_HELPERS } from './shaders/common';
-
-const myCustomShader = `
-${COMMON_UNIFORMS_GLSL}
-${GLSL_HELPERS}
-
-void main() {
-  vec2 uv = v_uv;
-  vec3 col = mix(u_color_primary.rgb, u_color_accent.rgb, sin(u_time * 2.0 + uv.x * 5.0) * 0.5 + 0.5);
-  col += u_hover * 0.3;
-  gl_FragColor = vec4(col, 0.9);
-}
-`;
-
-export function CustomButton() {
-  return (
-    <Button shader="custom" customFragmentShader={myCustomShader}>
-      Custom GPU Button
-    </Button>
-  );
-}
+const ref = useRef<HTMLDivElement>(null);
+useSurface(ref, { material: 'plasma', fx: 'liquid', fxAmount: 0.3, tint: 'accent' });
 ```
 
----
+Custom materials:
 
-## 📐 GLSL Uniform Contract
-
-Every shader mounted in SFX-UI automatically receives the following uniform set:
-
-| Uniform | Type | Range | Description |
-| :--- | :--- | :--- | :--- |
-| `u_time` | `float` | $0.0 \to \infty$ | Global animation clock in seconds |
-| `u_resolution` | `vec2` | $[w, h]$ | Element pixel size scaled by device pixel ratio |
-| `u_mouse` | `vec2` | $[0.0, 1.0]$ | Normalized cursor position relative to component |
-| `u_hover` | `float` | $0.0 \to 1.0$ | Smoothly lerped hover factor |
-| `u_active` | `float` | $0.0 \to 1.0$ | Click / pointerdown interaction factor |
-| `u_color_primary` | `vec4` | $[r, g, b, a]$ | Primary theme brand color |
-| `u_color_secondary` | `vec4` | $[r, g, b, a]$ | Secondary theme accent |
-| `u_color_accent` | `vec4` | $[r, g, b, a]$ | Highlight neon glow color |
-| `u_color_bg` | `vec4` | $[r, g, b, a]$ | Surface background color |
-| `u_corner_radius` | `float` | $0.0 \to N$ | Corner radius for Signed Distance Field (SDF) bounds |
-| `u_pixel_ratio` | `float` | $1.0 \to 2.0$ | Screen device pixel ratio |
-
----
-
-## 📂 Project Structure
-```
-sfx-ui/
-├── src/
-│   ├── core/                  # WebGL Engine, Types, Context & ShaderCanvas
-│   │   ├── ShaderEngine.ts    # WebGL program compilation, cache, uniform dispatch
-│   │   ├── ShaderCanvas.tsx   # React WebGL canvas wrapper with RAF lifecycle
-│   │   ├── ShaderContext.tsx  # Global design tokens and performance provider
-│   │   ├── types.ts           # Types & interfaces
-│   │   └── utils.ts           # Color converters, math & lerp helpers
-│   ├── shaders/               # GLSL Fragment Shader presets
-│   │   ├── common.ts          # Vertex shader, uniforms & math chunks
-│   │   └── presets/           # Liquid glass, Cyber grid, Aurora, Plasma, etc.
-│   ├── components/            # Standard UI component suite
-│   │   ├── Button/
-│   │   ├── Input/
-│   │   ├── Card/
-│   │   ├── Switch/
-│   │   ├── Slider/
-│   │   ├── Checkbox/
-│   │   ├── Badge/
-│   │   ├── Progress/
-│   │   ├── Modal/
-│   │   ├── Tabs/
-│   │   ├── Dropdown/
-│   │   ├── Tooltip/
-│   │   ├── Avatar/
-│   │   ├── Navigation/
-│   │   └── ShaderSurface.tsx  # Universal shader slot wrapper
-│   └── showcase/              # Showcase App, Live Shader Studio & Token Explorer
+```ts
+renderer.setMaterial('mine', `
+fn material(s: Surface, p: vec2f, uv: vec2f, frag: vec2f) -> vec4f {
+  let d = sdRoundBox(p, s.rect.zw * 0.5, s.shape.x);
+  return premul(mix(frame.primary.rgb, frame.accent.rgb, uv.x), fill(d));
+}`);
 ```
 
----
+## Architecture
 
-## 📄 License
+```
+src/kit/
+  gpu/
+    Renderer.ts        frame loop: layers → surfaces (DOM order) → backdrop copies → content FX → present
+    htmlInCanvas.ts    every call to the experimental API (one file to update on renames)
+    support.ts         capability detection for the gate
+    layout.ts          byte layouts of the WGSL Frame / Surface / Layer structs
+    wgsl/common.ts     structs, SDF + noise helpers, instanced vertex stage, shared focus ring
+    wgsl/materials.ts  18 built-in materials
+    wgsl/content.ts    content-effect compositor + present pass
+  stage/               Stage (gate or canvas), Layer, Surface, useSurface, HTML content source
+  components/          Button, Card, Input, Textarea, Switch, Slider, Checkbox, Badge, Progress,
+                       Avatar, Tabs, Modal, Select, Tooltip
+  theme.ts             --sfx-* CSS variables → GPU theme (4 themes)
+  dev/selfTest.ts      off-screen GPU self test
+src/app/               showcase (sections + WGSL Studio)
+public/                static files copied as-is (favicon)
+deploy/                production settings (.env.pages) and the release runbook
+.github/workflows/     ci.yml (main + PRs) and deploy.yml (release → GitHub Pages)
+```
+
+**Theme tokens** are CSS variables (`--sfx-primary` etc., "r g b"). Tailwind's `sfx-*` colors and the shaders both read them; switching `data-theme` re-themes both.
+
+**Rules for kit authors:** see `CLAUDE.md` and the project skills in `.claude/skills/`.
+
+## Sources
+
+The API is experimental and changes between Chrome versions; these are the references this kit was built against. Where they disagree with Chrome 154's actual behaviour, `src/kit/gpu/htmlInCanvas.ts` documents what was measured.
+
+- [WICG HTML-in-Canvas explainer](https://github.com/WICG/html-in-canvas): the living spec (attributes, `drawElementImage`, `texElementSubImage2D`, `drawElementImageToTexture`, `paint` event, `updateElementGeometry`)
+- [Chrome for Developers: HTML-in-Canvas updates, iterating toward a better Web API](https://developer.chrome.com/blog/html-in-canvas-ot-changes): origin-trial changes and the Chrome 155 renames
+- [WebGPU.com: Google introduces HTML-in-Canvas API](https://www.webgpu.com/news/google-html-in-canvas-webgl-webgpu/): WebGL/WebGPU entry points
+- [Better Stack: HTML-in-Canvas API, rendering live DOM elements as canvas textures](https://betterstack.com/community/guides/scaling-nodejs/html-in-canvas-api/)
+- [DEV Community: Google I/O 2026 and the HTML-in-Canvas API](https://dev.to/manikant92/google-io-2026-quietly-ended-a-20-year-old-web-problem-meet-the-html-in-canvas-api-4h9d): origin-trial timeline
+- [Web Standards: first experiments with HTML in `<canvas>`](https://web-standards.dev/news/2026/04/html-in-canvas-experiments/)
+- [html-in-canvas.dev](https://html-in-canvas.dev/): examples and `drawElementImage()` guide
+- [WebGPU specification](https://www.w3.org/TR/webgpu/) and [WGSL specification](https://www.w3.org/TR/WGSL/)
+
+## License
 MIT
