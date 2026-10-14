@@ -16,15 +16,22 @@ export interface StageProps {
   /** Global post-processing on the final image. */
   post?: Partial<Renderer['post']>;
   onReady?: (renderer: Renderer) => void;
+  /** Force simplified CSS fallback mode (for testing or cross-browser preview). */
+  fallback?: boolean;
 }
 
 /**
  * The root of an SFX app: one full-viewport WebGPU canvas whose children are real, laid-out,
- * accessible HTML drawn by the GPU via HTML-in-Canvas. Canvas-only: browsers without the API
- * get a gate screen explaining how to enable it.
+ * accessible HTML drawn by the GPU via HTML-in-Canvas.
+ * Includes a simplified CSS Glassmorphism fallback for Safari and browsers without WebGPU.
  */
-export function Stage({ children, theme = 'neon', quality = 'auto', post, onReady }: StageProps) {
+export function Stage({ children, theme = 'neon', quality = 'auto', post, onReady, fallback = false }: StageProps) {
   const [support, setSupport] = useState<SupportReport | null>(null);
+  const [userFallback, setUserFallback] = useState(fallback);
+
+  useEffect(() => {
+    setUserFallback(fallback);
+  }, [fallback]);
 
   useEffect(() => {
     detectSupport().then(setSupport);
@@ -35,11 +42,54 @@ export function Stage({ children, theme = 'neon', quality = 'auto', post, onRead
   }, [theme]);
 
   if (!support) return null;
-  if (!support.ready) return <UnsupportedGate report={support} />;
+
+  if (userFallback || (!support.ready && userFallback)) {
+    return (
+      <StageFallback onExit={support.ready ? () => setUserFallback(false) : undefined}>
+        {children}
+      </StageFallback>
+    );
+  }
+
+  if (!support.ready) {
+    return <UnsupportedGate report={support} onFallback={() => setUserFallback(true)} />;
+  }
+
   return (
     <StageCanvas post={post} quality={quality} onReady={onReady}>
       {children}
     </StageCanvas>
+  );
+}
+
+function StageFallback({ children, onExit }: { children: React.ReactNode; onExit?: () => void }) {
+  return (
+    <div className="sfx-fallback sfx-fallback-bg fixed inset-0 flex flex-col overflow-hidden bg-[rgb(var(--sfx-bg))] text-sfx-text">
+      {/* Top Banner explaining the Safari / WebGPU-less simplified fallback */}
+      <div className="relative z-50 flex items-center justify-between border-b border-white/10 bg-black/60 px-4 py-2 text-xs backdrop-blur-md">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+          <span className="font-medium text-amber-200">
+            Simplified CSS Fallback Mode (Safari &amp; Non-WebGPU Compatible)
+          </span>
+          <span className="hidden text-sfx-text/60 sm:inline">
+            · Real HTML markup with CSS glassmorphism &amp; backdrop filters
+          </span>
+        </div>
+        {onExit && (
+          <button
+            onClick={onExit}
+            className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] text-amber-200 hover:bg-amber-500/20"
+          >
+            Switch to WebGPU
+          </button>
+        )}
+      </div>
+
+      <div className="relative flex-1 overflow-hidden">
+        <StageContext.Provider value={{ renderer: null, canvas: null }}>{children}</StageContext.Provider>
+      </div>
+    </div>
   );
 }
 

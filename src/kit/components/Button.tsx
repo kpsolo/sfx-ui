@@ -3,11 +3,12 @@ import { useSurface } from '../stage/useSurface';
 import type { SurfaceOptions } from '../gpu/Renderer';
 import { cn } from '../util';
 
-export type ButtonVariant = 'glass' | 'neon' | 'plasma' | 'solid' | 'ghost' | 'danger';
+export type ButtonVariant = 'glass' | 'liquid-glass' | 'neon' | 'plasma' | 'solid' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon';
 
 const SURFACES: Record<ButtonVariant, SurfaceOptions> = {
   glass: { material: 'glass', params: [8, 10, 0.22, 12], fx: 'ripple', fxAmount: 0.7 },
+  'liquid-glass': { material: 'liquid-glass', params: [10, 16, 0.16, 16], fx: 'liquid', fxAmount: 0.65 },
   neon: { material: 'electric', fx: 'ripple', fxAmount: 0.5 },
   plasma: { material: 'plasma', fx: 'ripple', fxAmount: 0.6 },
   solid: { material: 'solid', fx: 'ripple', fxAmount: 0.4 },
@@ -41,6 +42,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   return (
     <button
       ref={ref}
+      data-sfx-surface=""
+      data-sfx-material={variant}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={cn(

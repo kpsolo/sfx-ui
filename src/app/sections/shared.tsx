@@ -3,6 +3,7 @@ import React from 'react';
 export const SECTIONS = [
   { id: 'components', label: 'Components' },
   { id: 'forms', label: 'Forms' },
+  { id: 'liquid-dom', label: 'Liquid DOM' },
   { id: 'materials', label: 'Materials' },
   { id: 'effects', label: 'Live HTML FX' },
   { id: 'data', label: 'Data' },

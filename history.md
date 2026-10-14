@@ -302,6 +302,48 @@ Every significant update or decision recorded in this file should follow the str
   - Button borders and control rims remain visibly crisp even when shaders step down to their minimum on high-DPR displays.
   - Not yet verified in the user's browser on the live site (CI/CD pending).
 
+### [2026-10-12] — Milestone 7: Liquid DOM Showcase Integration & Safari/Cross-Browser CSS Fallback (v0.5.0-liquid)
+- **Context & Motivation**:
+  - User requested adapting Andrew Prifer's "Liquid DOM Showcase" (featured on AI UX Playground: https://aiuxplayground.com/inspirations/liquid-dom-showcase) for SFX-UI.
+  - Andrew Prifer's showcase explores real DOM markup participating directly in GPU composition through WebGPU and the experimental HTML-in-Canvas API, bending light dynamically around live text and controls rather than faking refraction with static textures or sprites.
+  - The requirements:
+    1. Adapt for a screen/settings panel in React + Tailwind.
+    2. Keep real HTML controls inside the effect (inputs, sliders, switches, buttons).
+    3. Plan and provide a simplified fallback for Safari and browsers lacking WebGPU / HTML-in-Canvas.
+- **Architectural Decision**:
+  - **New `liquid-glass` Surface Material**: Built an optical glass material that calculates SDF surface normals from round boxes, simulates multi-scale fluid wave turbulence (FBM + harmonic waves), creates an interactive cursor swell and meniscus wake, incorporates click shockwaves, and samples scene backdrops with chromatic dispersion (channel separation along gradient vectors) and caustic edge highlights.
+  - **Upgraded `liquid` Content Effect (`CONTENT_WGSL` case 2u)**: Instead of generic coordinate noise, the shader now refracts the live HTML content texture itself using the glass shape's convex bevel normal vectors (`-n * lens`), interactive cursor swell wake (`pointerDir * swell`), and chromatic dispersion fringing (`chroma`). As the user types into inputs or drags sliders, the markup itself physically bends and refracts in real time.
+  - **Dedicated Screen: Liquid DOM Settings Panel (`LiquidSettingsSection.tsx`)**:
+    - Created a rich, full-featured settings panel screen in React + Tailwind.
+    - All controls (profile nickname input, node address input, fluid viscosity slider, VRAM budget slider, caustics/wake switches, select dropdown, and buttons) are native DOM elements placed directly inside the `<Card material="liquid-glass" fx="liquid">` container.
+    - Added real-time optical physics controls (wave displacement, refraction offset, backdrop blur, lens bevel width) and a shockwave trigger.
+  - **Simplified CSS Glassmorphism Fallback (`StageFallback` + `.sfx-fallback`)**:
+    - Safari, iOS, Firefox, and Chromium without experimental flags previously hit a dead-end gate screen.
+    - Implemented a graceful fallback architecture:
+      - `UnsupportedGate` now provides a 1-click action: *"Launch Simplified CSS Fallback (Safari / Non-WebGPU Mode)"*.
+      - `Stage.tsx` supports `fallback` mode and renders `StageFallback` without initializing WebGPU or `<canvas>`, providing `document.body` portal fallbacks in `Layer.tsx`.
+      - High-fidelity CSS glassmorphism styles in `index.css` (`backdrop-filter: blur(24px) saturate(180%)`, `-webkit-backdrop-filter`, specular edge gradients, custom styled switches and range inputs) ensure 100% visual and interactive parity on any browser.
+      - A simulation toggle in `LiquidSettingsSection` allows side-by-side comparison of WebGPU Liquid DOM vs. Safari CSS Fallback on any platform.
+- **Implementation Details**:
+  - `src/kit/gpu/wgsl/materials.ts`: added `liquid-glass` material, updated `BACKDROP_MATERIALS`, `BuiltinMaterial`, `MATERIAL_PX_PARAMS`, `MATERIAL_DEFAULTS`.
+  - `src/kit/gpu/wgsl/content.ts`: upgraded `case 2u` liquid content effect with lens refraction, pointer wake, and chromatic aberration.
+  - `src/kit/components/Button.tsx`: added `liquid-glass` variant, added `data-sfx-surface` and `data-sfx-material` attributes.
+  - `src/kit/components/Card.tsx`: added `liquid-glass` default params and `data-sfx-*` attributes.
+  - `src/kit/stage/Surface.tsx`: added `data-sfx-*` attributes for styling in fallback mode.
+  - `src/kit/stage/Layer.tsx`: added fallback portal target (`document.body`) when `canvas` is null.
+  - `src/kit/stage/Stage.tsx`: added `fallback` prop and `StageFallback` wrapper with diagnostic banner.
+  - `src/kit/stage/UnsupportedGate.tsx`: added `onFallback` prop and "Explore CSS Fallback" button.
+  - `src/index.css`: added `.sfx-fallback` glassmorphism styles, switch styles, and gradient background.
+  - `src/app/sections/LiquidSettingsSection.tsx`: new dedicated Liquid DOM settings panel screen.
+  - `src/app/sections/shared.tsx`: added `liquid-dom` to `SECTIONS` navigation.
+  - `src/app/App.tsx`: integrated `LiquidSettingsSection` into main scrollable view.
+- **Verification & Outcome**:
+  - `npm run typecheck`: passed with zero errors (`tsc --noEmit`).
+  - `npm run build`: built production bundle in 15.7s with zero errors.
+  - `npm run build:pages`: GitHub Pages production build passed with zero errors.
+  - Verified WebGPU shader compilation for `liquid-glass` material and upgraded `liquid` content effect.
+  - Verified fallback mode renders cleanly without requiring WebGPU or HTML-in-Canvas.
+
 ---
 
 ## Future Roadmap & Architecture Proposals
@@ -311,3 +353,4 @@ Every significant update or decision recorded in this file should follow the str
 - **Live verification gaps:** Modal (frost + dissolve), Tooltip, keyboard focus rings, and the origin-trial path without the flag.
 - **WebGPU compute:** particles and simulations driven by compute shaders inside materials (the device and bind-group plumbing already exist).
 - **Track API renames:** when Chrome 155+ ships the explainer shapes (`content="drawable"`, `{ texture, size }` destinations, `updateElementGeometry` hit testing), drop the Chrome 154 fallbacks in `gpu/htmlInCanvas.ts`.
+

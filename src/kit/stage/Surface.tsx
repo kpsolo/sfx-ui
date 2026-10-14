@@ -18,7 +18,14 @@ function SurfaceImpl({ as, surface, ...rest }: SurfaceImplProps, forwarded: Reac
   useImperativeHandle(forwarded, () => ref.current!);
   useSurface(ref, surface);
   const Tag = as ?? 'div';
-  return <Tag ref={ref} {...rest} />;
+  return (
+    <Tag
+      ref={ref}
+      data-sfx-surface={surface ? '' : undefined}
+      data-sfx-material={surface?.material}
+      {...rest}
+    />
+  );
 }
 
 /** Any element with a GPU surface behind its content. */

@@ -25,11 +25,24 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
   useImperativeHandle(forwarded, () => ref.current!);
   useSurface(ref, {
     material,
-    params: material === 'glass' ? [12, 16, 0.12, 22] : undefined,
+    params:
+      material === 'glass'
+        ? [12, 16, 0.12, 22]
+        : material === 'liquid-glass'
+        ? [14, 22, 0.12, 28]
+        : undefined,
     margin: 18,
     fx,
     fxAmount,
     ...surface,
   });
-  return <div ref={ref} className={cn('relative rounded-2xl text-sfx-text', PADDING[padding], className)} {...rest} />;
+  return (
+    <div
+      ref={ref}
+      data-sfx-surface=""
+      data-sfx-material={material}
+      className={cn('relative rounded-2xl text-sfx-text', PADDING[padding], className)}
+      {...rest}
+    />
+  );
 });

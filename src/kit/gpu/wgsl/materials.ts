@@ -70,6 +70,63 @@ fn material(s: Surface, p: vec2f, uv: vec2f, frag: vec2f) -> vec4f {
   return over(premul(rgb, inside), shadow);
 }`,
 
+  'liquid-glass': /* wgsl */ `
+// Liquid DOM glass shell: bends light dynamically around live DOM elements.
+// params: x blur px, y refraction px, z tint amount, w bevel width px
+fn material(s: Surface, p: vec2f, uv: vec2f, frag: vec2f) -> vec4f {
+  ${SHAPE}
+  ${SHADOW}
+  let r = s.shape.x;
+  let n = normalize(vec2f(
+    sdRoundBox(p + vec2f(1.0, 0.0), half, r) - sdRoundBox(p - vec2f(1.0, 0.0), half, r),
+    sdRoundBox(p + vec2f(0.0, 1.0), half, r) - sdRoundBox(p - vec2f(0.0, 1.0), half, r)
+  ) + vec2f(1e-5));
+  let bevel = clamp(1.0 + d / max(s.params.w, 1.0), 0.0, 1.0);
+  let lens = bevel * bevel;
+  let t = s.anim.x;
+
+  // Fluid turbulence and multi-frequency liquid wave flow
+  let f1 = vec2f(fbm(uv * 3.5 + vec2f(t * 0.08, -t * 0.04)), fbm(uv * 3.5 + vec2f(9.1 - t * 0.06, t * 0.07))) - 0.5;
+  let f2 = vec2f(sin(uv.y * 12.0 + t * 1.5), cos(uv.x * 12.0 - t * 1.2)) * 0.15;
+  let flow = (f1 + f2) * s.params.y * 0.45;
+
+  // Pointer liquid meniscus & interactive shockwave ripple
+  let lp = s.pointer.xy - half;
+  let pdist = length(p - lp);
+  let swellRad = 0.5 * min(half.x, half.y) + 30.0;
+  let swell = exp(-pdist / swellRad) * s.state.x;
+  let pvec = (p - lp) / max(pdist, 1.0);
+  let rippleWave = sin(pdist * 0.08 - t * 5.0) * exp(-pdist * 0.015) * s.state.x * 0.35;
+  let shock = exp(-abs(pdist - (1.0 - s.anim.w) * swellRad * 2.0) / 16.0) * s.anim.w * 0.6;
+
+  let totalDistort = -n * lens * s.params.y + flow + pvec * (swell * 14.0 + rippleWave * 8.0 + shock * 18.0);
+  var rgb = backdropBlur(frag + totalDistort, s.params.x);
+
+  // High-fidelity chromatic dispersion along liquid refraction gradient
+  let disp = (n * lens * 0.6 + pvec * swell * 0.4) * s.params.y * 0.35;
+  rgb.r = mix(rgb.r, backdropAt(frag + totalDistort + disp).r, lens * 0.75 + swell * 0.4);
+  rgb.b = mix(rgb.b, backdropAt(frag + totalDistort - disp).b, lens * 0.75 + swell * 0.4);
+
+  // Caustic edge brightening and liquid internal reflection
+  let caustic = pow(clamp(lens + swell * 0.5, 0.0, 1.0), 2.5) * 0.28;
+  rgb += pick(s.tint, frame.surface).rgb * (s.params.z + caustic);
+
+  // Liquid lighting: specular glint, key light, and pointer reflection
+  let sunDir = normalize(vec2f(-0.5, -0.85));
+  let keySpec = pow(max(dot(n, sunDir), 0.0), 8.0) * lens * 0.45;
+  let pointSpec = pow(max(dot(n, normalize(lp + vec2f(1e-4))), 0.0), 12.0) * lens * s.state.x * 0.75;
+  let liquidGlint = pow(max(dot(normalize(n + f1 * 0.8), sunDir), 0.0), 16.0) * 0.25;
+
+  rgb += vec3f(keySpec + pointSpec + liquidGlint);
+  // Pointer proximity glow and press flash
+  rgb += frame.primary.rgb * exp(-pdist / (swellRad * 1.2)) * s.state.x * 0.16;
+  rgb += frame.accent.rgb * s.anim.w * 0.22;
+  // Soft liquid meniscus rim highlight
+  rgb += vec3f(1.0) * stroke(d + 0.85, 1.2) * (0.28 + 0.32 * s.state.x);
+
+  return over(premul(rgb, inside), shadow);
+}`,
+
   frost: /* wgsl */ `
 // Full-layer scrim. params: x blur px, y darkness, z refraction px. state.w = open amount 0..1.
 fn material(s: Surface, p: vec2f, uv: vec2f, frag: vec2f) -> vec4f {
@@ -409,16 +466,17 @@ fn material(s: Surface, p: vec2f, uv: vec2f, frag: vec2f) -> vec4f {
 };
 
 /** Materials that read the scene behind them; the renderer copies the backdrop region first. */
-export const BACKDROP_MATERIALS = new Set(['glass', 'frost']);
+export const BACKDROP_MATERIALS = new Set(['glass', 'liquid-glass', 'frost']);
 
 export type BuiltinMaterial =
-  | 'solid' | 'glass' | 'frost' | 'aurora' | 'plasma' | 'grid' | 'electric' | 'hologram'
+  | 'solid' | 'glass' | 'liquid-glass' | 'frost' | 'aurora' | 'plasma' | 'grid' | 'electric' | 'hologram'
   | 'dither' | 'starfield' | 'ripple' | 'pill' | 'switch' | 'slider' | 'check' | 'progress'
   | 'ring' | 'indicator';
 
 /** Param slots holding CSS px lengths; the renderer scales them by the device pixel ratio. */
 export const MATERIAL_PX_PARAMS: Partial<Record<BuiltinMaterial, number[]>> = {
   glass: [0, 1, 3],
+  'liquid-glass': [0, 1, 3],
   frost: [0, 2],
   electric: [1],
   dither: [0],
@@ -430,6 +488,7 @@ export const MATERIAL_PX_PARAMS: Partial<Record<BuiltinMaterial, number[]>> = {
 /** Default params (vec4) per material. */
 export const MATERIAL_DEFAULTS: Partial<Record<BuiltinMaterial, [number, number, number, number]>> = {
   glass: [10, 14, 0.18, 18],
+  'liquid-glass': [14, 22, 0.12, 28],
   frost: [22, 0.45, 18, 0],
   electric: [0.85, 2.5, 0, 0],
   dither: [3, 0, 0, 0],

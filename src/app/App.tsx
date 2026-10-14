@@ -4,6 +4,7 @@ import { NavBar } from './NavBar';
 import { Hero } from './sections/Hero';
 import { ButtonsSection } from './sections/ButtonsSection';
 import { FormsSection } from './sections/FormsSection';
+import { LiquidSettingsSection } from './sections/LiquidSettingsSection';
 import { MaterialsSection } from './sections/MaterialsSection';
 import { EffectsSection } from './sections/EffectsSection';
 import { DataSection } from './sections/DataSection';
@@ -53,6 +54,7 @@ export function App() {
           <Hero onExplore={() => scrollTo('components')} onStudio={() => scrollTo('studio')} />
           <ButtonsSection />
           <FormsSection />
+          <LiquidSettingsSection />
           <MaterialsSection />
           <EffectsSection />
           <DataSection />

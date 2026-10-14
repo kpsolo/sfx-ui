@@ -83,3 +83,110 @@ textarea.font-mono {
 .sfx-scroll::-webkit-scrollbar {
   display: none;
 }
+
+/* =========================================================================
+   Simplified CSS Glassmorphism Fallback for Safari & non-WebGPU browsers
+   ========================================================================= */
+
+.sfx-fallback [data-sfx-surface] {
+  background: rgba(var(--sfx-surface), 0.5);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
+}
+
+.sfx-fallback [data-sfx-material='liquid-glass'],
+.sfx-fallback [data-sfx-material='glass'] {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(var(--sfx-surface), 0.45) 45%,
+    rgba(var(--sfx-surface), 0.72) 100%
+  );
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.55), inset 0 1px 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.sfx-fallback [data-sfx-material='aurora'] {
+  background: linear-gradient(
+    135deg,
+    rgba(var(--sfx-primary), 0.2) 0%,
+    rgba(var(--sfx-secondary), 0.15) 50%,
+    rgba(var(--sfx-surface), 0.7) 100%
+  );
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(var(--sfx-primary), 0.3);
+}
+
+.sfx-fallback [data-sfx-material='electric'] {
+  background: rgba(var(--sfx-surface), 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(var(--sfx-primary), 0.6);
+  box-shadow: 0 0 16px rgba(var(--sfx-primary), 0.25);
+}
+
+.sfx-fallback [data-sfx-material='plasma'] {
+  background: linear-gradient(135deg, rgba(var(--sfx-accent), 0.25), rgba(var(--sfx-surface), 0.7));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(var(--sfx-accent), 0.4);
+}
+
+.sfx-fallback [data-sfx-material='solid'] {
+  background: rgba(var(--sfx-surface), 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sfx-fallback [data-sfx-material='frost'] {
+  background: rgba(var(--sfx-bg), 0.8);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+/* Fallback controls styling */
+.sfx-fallback button[role='switch'] {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: background-color 0.2s, border-color 0.2s;
+}
+.sfx-fallback button[role='switch'][aria-checked='true'] {
+  background: rgb(var(--sfx-primary));
+  border-color: rgb(var(--sfx-primary));
+}
+.sfx-fallback button[role='switch']::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: #ffffff;
+  border-radius: 9999px;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+.sfx-fallback button[role='switch'][aria-checked='true']::after {
+  transform: translateX(20px);
+}
+
+.sfx-fallback input[type='range'] {
+  opacity: 1 !important;
+  accent-color: rgb(var(--sfx-primary));
+}
+
+.sfx-fallback input[type='checkbox'] {
+  opacity: 1 !important;
+  accent-color: rgb(var(--sfx-primary));
+}
+
+.sfx-fallback .sfx-fallback-bg {
+  background: radial-gradient(circle at 50% 0%, rgba(var(--sfx-primary), 0.12) 0%, transparent 60%),
+              radial-gradient(circle at 80% 50%, rgba(var(--sfx-secondary), 0.08) 0%, transparent 50%),
+              rgb(var(--sfx-bg));
+}
+

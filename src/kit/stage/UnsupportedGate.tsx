@@ -27,7 +27,7 @@ function Check({ ok, label, detail }: { ok: boolean; label: string; detail?: str
 }
 
 /** Shown instead of the stage when WebGPU or HTML-in-Canvas is unavailable. */
-export function UnsupportedGate({ report }: { report: SupportReport }) {
+export function UnsupportedGate({ report, onFallback }: { report: SupportReport; onFallback?: () => void }) {
   const h = report.htmlInCanvas;
   const [copied, setCopied] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
@@ -61,6 +61,24 @@ export function UnsupportedGate({ report }: { report: SupportReport }) {
           </a>
           , so shaders can refract, ripple and dissolve live content. Your browser is missing part of that.
         </p>
+
+        {onFallback && (
+          <div className="mt-6 flex flex-col gap-3 rounded-xl border border-sfx-primary/30 bg-sfx-primary/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold text-white">Safari or standard browser?</p>
+              <p className="text-xs text-sfx-text/70">
+                You can explore the full UI with the simplified CSS Glassmorphism fallback.
+              </p>
+            </div>
+            <button
+              onClick={onFallback}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-sfx-primary px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-sfx-primary/90 active:scale-95"
+            >
+              <span>Explore CSS Fallback</span>
+              <span aria-hidden>→</span>
+            </button>
+          </div>
+        )}
 
         <ul className="mt-8 divide-y divide-white/5 rounded-xl border border-white/10 bg-white/[0.02] px-5">
           <Check ok={report.webgpu} label="WebGPU" />

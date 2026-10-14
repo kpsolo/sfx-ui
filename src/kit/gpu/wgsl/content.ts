@@ -112,8 +112,22 @@ fn fs(in: VOut) -> @location(0) vec4f {
         q -= (v / max(r, 1e-3) * wave + v2 / max(r2, 1e-3) * shock) * inside;
       }
       case 2u: {
+        // Liquid glass light-bending: lens refraction near edges, organic fluid flow, and pointer swell.
+        let r = s.shape.x * k;
+        let n = normalize(vec2f(
+          sdRoundBox(p + vec2f(1.0, 0.0), half, r) - sdRoundBox(p - vec2f(1.0, 0.0), half, r),
+          sdRoundBox(p + vec2f(0.0, 1.0), half, r) - sdRoundBox(p - vec2f(0.0, 1.0), half, r)
+        ) + vec2f(1e-5));
+        let bevel = clamp(1.0 + d / max(24.0 * frame.dpr, 1.0), 0.0, 1.0);
+        let lens = bevel * bevel;
         let w = vec2f(fbm(p * 0.012 + vec2f(t * 0.25, 0.0)), fbm(p * 0.012 + vec2f(5.2, -t * 0.25))) - 0.5;
-        q += w * amt * 26.0 * inside;
+        // Pointer swell & interaction wake
+        let lp = pointer.xy - half;
+        let pdist = length(p - lp);
+        let swell = exp(-pdist / (70.0 * frame.dpr)) * s.state.x * 18.0;
+        let pointerDir = (p - lp) / max(pdist, 1.0);
+        q += (w * 22.0 + pointerDir * swell - n * lens * 16.0) * amt * inside;
+        chroma = max(chroma, (lens * 2.5 + s.state.x * 1.5) * amt * inside);
       }
       case 3u: {
         let band = floor(frag.y / 7.0);

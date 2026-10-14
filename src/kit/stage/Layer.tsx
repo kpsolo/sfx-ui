@@ -73,6 +73,6 @@ export const Layer = forwardRef<HTMLDivElement, LayerProps>(function Layer(
     </div>
   );
 
-  if (portal) return canvas ? createPortal(node, canvas) : null;
+  if (portal) return canvas ? createPortal(node, canvas) : typeof document !== 'undefined' ? createPortal(node, document.body) : null;
   return node;
 });
